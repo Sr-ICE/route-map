@@ -261,6 +261,13 @@ const STATIONS = {
   // === 湘南新宿ライン・相鉄JR直通 補助駅 ===
   'nishi-oi':          { name: '西大井',         x: 1090, y: 870 },
   'shin-kawasaki':     { name: '新川崎',         x: 920,  y: 1020 },
+
+  // === みなとみらい線（横浜は既存） ===
+  'shin-takashima':    { name: '新高島',         x: 500, y: 1410 },
+  'minatomirai':       { name: 'みなとみらい',   x: 540, y: 1440 },
+  'bashamichi':        { name: '馬車道',         x: 580, y: 1470 },
+  'nihon-odori':       { name: '日本大通り',     x: 620, y: 1490 },
+  'motomachi-chukagai':{ name: '元町・中華街',   x: 680, y: 1510 },
 };
 
 // ===== 路線データ =====
@@ -359,5 +366,11 @@ const LINES = [
   {
     id: 'sotetsu-jr', name: '相鉄・JR直通線', company: '相鉄/JR', color: '#00AC42',
     stations: ['shinjuku','shibuya','ebisu','osaki','nishi-oi','musashi-kosugi','shin-kawasaki','hazawa-yokohama-kokudai','nishiya','tsurugamine','futamatagawa','kibogaoka','mitsukyo','seya','yamato','sagami-otsuka','sagamino','kashiwadai','ebina']
+  },
+
+  // 横浜高速鉄道
+  {
+    id: 'minatomirai', name: 'みなとみらい線', company: '横浜高速', color: '#003580',
+    stations: ['yokohama','shin-takashima','minatomirai','bashamichi','nihon-odori','motomachi-chukagai']
   },
 ];
