@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+  <meta name="theme-color" content="#1a1a1a" />
+  <title>My路線図 - 東急・相鉄ベース</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <h1 class="app-title">My路線図</h1>
+    <nav class="tab-nav" role="tablist">
+      <button class="tab-btn is-active" data-tab="map" role="tab" aria-selected="true">マップ</button>
+      <button class="tab-btn" data-tab="list" role="tab" aria-selected="false">リスト</button>
+    </nav>
+  </header>
+
+  <!-- 路線フィルタ -->
+  <section class="filter-panel" aria-label="路線フィルタ">
+    <button class="filter-toggle" id="filter-toggle" aria-expanded="false">
+      <span class="filter-toggle__label">路線フィルタ</span>
+      <span class="filter-toggle__count" id="filter-count"></span>
+      <span class="filter-toggle__chevron">▼</span>
+    </button>
+    <div class="filter-body" id="filter-body" hidden>
+      <div class="filter-actions">
+        <button type="button" class="filter-action" data-action="all">全選択</button>
+        <button type="button" class="filter-action" data-action="none">全解除</button>
+        <button type="button" class="filter-action" data-action="tokyu-sotetsu">東急+相鉄のみ</button>
+      </div>
+      <div class="filter-groups" id="filter-groups"></div>
+    </div>
+  </section>
+
+  <!-- マップビュー -->
+  <main class="view view-map is-active" id="view-map" role="tabpanel">
+    <div class="map-controls">
+      <button class="map-ctrl" id="zoom-in" aria-label="拡大">+</button>
+      <button class="map-ctrl" id="zoom-out" aria-label="縮小">−</button>
+      <button class="map-ctrl" id="zoom-reset" aria-label="リセット">⤾</button>
+    </div>
+    <div class="map-viewport" id="map-viewport">
+      <svg id="map-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1500"></svg>
+    </div>
+    <div class="map-hint">ピンチ / 2本指で拡大縮小・ドラッグで移動</div>
+  </main>
+
+  <!-- リストビュー -->
+  <main class="view view-list" id="view-list" role="tabpanel" hidden>
+    <div class="list-container" id="list-container"></div>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
