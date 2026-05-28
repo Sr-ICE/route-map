@@ -52,7 +52,28 @@
     <div class="list-container" id="list-container"></div>
   </main>
 
+  <!-- 駅メモモーダル -->
+  <div class="memo-modal" id="memo-modal" hidden>
+    <div class="memo-modal__backdrop" data-close></div>
+    <div class="memo-modal__panel">
+      <header class="memo-modal__header">
+        <div>
+          <h2 class="memo-modal__title" id="memo-modal-title">駅名</h2>
+          <p class="memo-modal__sub" id="memo-modal-sub">路線情報</p>
+        </div>
+        <button class="memo-modal__close" data-close aria-label="閉じる">×</button>
+      </header>
+      <div class="memo-modal__body" id="memo-modal-body">
+        <!-- 既存メモ一覧 + 追加フォーム -->
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div class="toast" id="toast" hidden></div>
+
   <script src="data.js"></script>
+  <script src="memos.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

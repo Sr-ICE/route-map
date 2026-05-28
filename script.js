@@ -146,6 +146,12 @@
     });
   });
 
+  // ===== メモ数取得ヘルパー =====
+  const MEMOS = (typeof STATION_MEMOS !== 'undefined') ? STATION_MEMOS : {};
+  function memoCount(sid) {
+    return (MEMOS[sid] && MEMOS[sid].length) || 0;
+  }
+
   // ===== 駅ラベル方向の決定 =====
   // 駅の周りの線の方向を見て、ラベルを最適な向きに配置
   function calcLabelDirection(sid, station) {
@@ -318,23 +324,32 @@
       if (lines.length === 0) return;
 
       const isTransfer = lines.length >= 2;
+      const hasMemo = memoCount(sid) > 0;
       const circle = document.createElementNS(NS, 'circle');
       circle.setAttribute('cx', station.x);
       circle.setAttribute('cy', station.y);
       circle.setAttribute('r', isTransfer ? 5.5 : 3.5);
-      circle.setAttribute('class', 'station-circle' + (isTransfer ? ' is-transfer' : ''));
+      circle.setAttribute('class', 'station-circle' + (isTransfer ? ' is-transfer' : '') + (hasMemo ? ' has-memo' : ''));
       circle.setAttribute('data-station', sid);
       circle.setAttribute('data-lines', lines.join(','));
-      // 単独駅は所属路線色を線色に
       if (!isTransfer) {
         const lineColor = LINES.find(l => l.id === lines[0])?.color || '#333';
         circle.setAttribute('stroke', lineColor);
       } else {
         circle.setAttribute('stroke', '#1d1d1f');
       }
+      // メモがある駅は金色枠で上書き
+      if (hasMemo) circle.setAttribute('stroke', '#F4A300');
       stationsLayer.appendChild(circle);
     });
     svg.appendChild(stationsLayer);
+
+    // 駅クリックでモーダルオープン
+    stationsLayer.addEventListener('click', (e) => {
+      const c = e.target.closest('.station-circle');
+      if (!c) return;
+      openMemoModal(c.dataset.station);
+    });
 
     // ラベルレイヤー（駅の進行方向に対し垂直方向に配置）
     const labelsLayer = document.createElementNS(NS, 'g');
@@ -636,6 +651,7 @@
         if (!s) return;
         const li = document.createElement('li');
         li.className = 'list-station';
+        li.dataset.station = sid;
 
         const transfers = Array.from(stationLineMap[sid] || [])
           .filter(lid => lid !== line.id)
@@ -643,6 +659,8 @@
           .filter(Boolean);
 
         if (transfers.length > 0) li.classList.add('is-transfer');
+        const mc = memoCount(sid);
+        if (mc > 0) li.classList.add('has-memo');
 
         const chips = transfers.map(t => `
           <span class="list-station__transfer-chip">
@@ -651,10 +669,16 @@
           </span>
         `).join('');
 
+        const memoBadge = mc > 0
+          ? `<span class="list-station__memo-badge" title="${mc}件のメモ">★ ${mc}</span>`
+          : '';
+
         li.innerHTML = `
           <span class="list-station__name">${s.name}</span>
+          ${memoBadge}
           <span class="list-station__transfers">${chips}</span>
         `;
+        li.addEventListener('click', () => openMemoModal(sid));
         ul.appendChild(li);
       });
 
@@ -662,6 +686,130 @@
       wrap.appendChild(ul);
       container.appendChild(wrap);
     });
+  }
+
+  // ===== 駅メモモーダル =====
+  function openMemoModal(sid) {
+    const station = STATIONS[sid];
+    if (!station) return;
+    const lines = Array.from(stationLineMap[sid] || [])
+      .map(lid => LINES.find(l => l.id === lid))
+      .filter(Boolean);
+
+    const titleEl = document.getElementById('memo-modal-title');
+    const subEl = document.getElementById('memo-modal-sub');
+    const bodyEl = document.getElementById('memo-modal-body');
+    const modal = document.getElementById('memo-modal');
+
+    titleEl.textContent = station.name;
+    subEl.innerHTML = lines.map(l =>
+      `<span class="memo-modal__line-chip"><span style="background:${l.color}"></span>${l.name}</span>`
+    ).join('');
+
+    const memos = MEMOS[sid] || [];
+    const memoListHtml = memos.length === 0
+      ? '<p class="memo-modal__empty">まだメモはありません。下のフォームから追加してください。</p>'
+      : `<ul class="memo-list">${memos.map((m, i) => `
+          <li class="memo-item">
+            <div class="memo-item__head">
+              <span class="memo-item__name">${escapeHtml(m.name)}</span>
+              ${m.genre ? `<span class="memo-item__genre">${escapeHtml(m.genre)}</span>` : ''}
+            </div>
+            ${m.memo ? `<p class="memo-item__memo">${escapeHtml(m.memo)}</p>` : ''}
+            ${m.url ? `<a class="memo-item__url" href="${escapeAttr(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.url)} ↗</a>` : ''}
+          </li>
+        `).join('')}</ul>`;
+
+    bodyEl.innerHTML = `
+      <section class="memo-section">
+        <h3 class="memo-section__title">登録済み (${memos.length})</h3>
+        ${memoListHtml}
+      </section>
+      <section class="memo-section">
+        <h3 class="memo-section__title">追加</h3>
+        <form class="memo-form" id="memo-form">
+          <label class="memo-field">
+            <span class="memo-field__label">店名 *</span>
+            <input type="text" name="name" required placeholder="例: モンブラン">
+          </label>
+          <label class="memo-field">
+            <span class="memo-field__label">ジャンル</span>
+            <input type="text" name="genre" placeholder="例: 洋菓子 / カフェ / ラーメン">
+          </label>
+          <label class="memo-field">
+            <span class="memo-field__label">URL</span>
+            <input type="url" name="url" placeholder="https://...">
+          </label>
+          <label class="memo-field">
+            <span class="memo-field__label">メモ</span>
+            <textarea name="memo" rows="3" placeholder="自由メモ"></textarea>
+          </label>
+          <button type="submit" class="memo-form__submit">JSONをコピー</button>
+        </form>
+        <details class="memo-help">
+          <summary>反映方法</summary>
+          <ol>
+            <li>「JSONをコピー」を押す</li>
+            <li>GitHubの <code>memos.js</code> を開く</li>
+            <li><code>'${sid}': [ ... ]</code> に貼り付け（既存ならカンマで追加）</li>
+            <li>commit → push で反映</li>
+          </ol>
+        </details>
+      </section>
+    `;
+
+    document.getElementById('memo-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const memoObj = {
+        name:  (fd.get('name')  || '').trim(),
+        genre: (fd.get('genre') || '').trim(),
+        url:   (fd.get('url')   || '').trim(),
+        memo:  (fd.get('memo')  || '').trim(),
+      };
+      if (!memoObj.name) return;
+      // 既存メモと結合した配列を生成
+      const merged = [...memos, memoObj];
+      const json = `  '${sid}': ${JSON.stringify(merged, null, 4).replace(/\n/g, '\n  ')},`;
+      navigator.clipboard.writeText(json).then(() => {
+        toast('JSONをクリップボードにコピーしました。memos.js に貼り付けてください。');
+      }).catch(() => {
+        toast('コピーに失敗しました。下記をコピーしてください: ' + json);
+      });
+    });
+
+    modal.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMemoModal() {
+    document.getElementById('memo-modal').setAttribute('hidden', '');
+    document.body.style.overflow = '';
+  }
+
+  document.getElementById('memo-modal').addEventListener('click', (e) => {
+    if (e.target.hasAttribute('data-close')) closeMemoModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMemoModal();
+  });
+
+  // トースト
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.removeAttribute('hidden');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.setAttribute('hidden', ''), 3000);
+  }
+
+  // エスケープ
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s);
   }
 
   // ===== タブ切り替え =====
