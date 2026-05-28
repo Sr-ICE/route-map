@@ -11,10 +11,13 @@
 
   <header class="app-header">
     <h1 class="app-title">My路線図</h1>
-    <nav class="tab-nav" role="tablist">
-      <button class="tab-btn is-active" data-tab="map" role="tab" aria-selected="true">マップ</button>
-      <button class="tab-btn" data-tab="list" role="tab" aria-selected="false">リスト</button>
-    </nav>
+    <div class="header-right">
+      <nav class="tab-nav" role="tablist">
+        <button class="tab-btn is-active" data-tab="map" role="tab" aria-selected="true">マップ</button>
+        <button class="tab-btn" data-tab="list" role="tab" aria-selected="false">リスト</button>
+      </nav>
+      <button class="header-settings" id="open-settings" aria-label="設定">⚙</button>
+    </div>
   </header>
 
   <!-- 路線フィルタ -->
@@ -51,6 +54,48 @@
   <main class="view view-list" id="view-list" role="tabpanel" hidden>
     <div class="list-container" id="list-container"></div>
   </main>
+
+  <!-- 設定モーダル -->
+  <div class="memo-modal" id="settings-modal" hidden>
+    <div class="memo-modal__backdrop" data-close></div>
+    <div class="memo-modal__panel">
+      <header class="memo-modal__header">
+        <div>
+          <h2 class="memo-modal__title">設定</h2>
+          <p class="memo-modal__sub"><span class="memo-modal__line-chip">GitHub 認証 (PAT)</span></p>
+        </div>
+        <button class="memo-modal__close" data-close aria-label="閉じる">×</button>
+      </header>
+      <div class="memo-modal__body">
+        <section class="memo-section">
+          <h3 class="memo-section__title">Personal Access Token</h3>
+          <p id="pat-status" class="pat-status"></p>
+          <form class="memo-form" id="pat-form">
+            <label class="memo-field">
+              <span class="memo-field__label">PAT (github_pat_...)</span>
+              <input type="password" id="pat-input" placeholder="github_pat_xxxxxxxxxxxxxxxx" autocomplete="off">
+            </label>
+            <div class="pat-buttons">
+              <button type="submit" class="memo-form__submit">保存</button>
+              <button type="button" class="memo-form__clear" id="pat-clear">削除</button>
+            </div>
+          </form>
+        </section>
+        <section class="memo-section">
+          <h3 class="memo-section__title">PAT 発行手順</h3>
+          <ol class="pat-howto">
+            <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">PAT発行ページ ↗</a> を開く</li>
+            <li>Token name: <code>route-map</code></li>
+            <li>Expiration: お好み（最大1年）</li>
+            <li>Repository access: <strong>Only select repositories</strong> → <code>route-map</code></li>
+            <li>Permissions → Repository permissions → <strong>Contents</strong> を <strong>Read and write</strong></li>
+            <li>Generate token → 表示されたトークンをコピー</li>
+            <li>このページの入力欄に貼り付けて保存</li>
+          </ol>
+        </section>
+      </div>
+    </div>
+  </div>
 
   <!-- 駅メモモーダル -->
   <div class="memo-modal" id="memo-modal" hidden>

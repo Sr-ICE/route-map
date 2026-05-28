@@ -146,11 +146,137 @@
     });
   });
 
-  // ===== メモ数取得ヘルパー =====
-  const MEMOS = (typeof STATION_MEMOS !== 'undefined') ? STATION_MEMOS : {};
+  // ===== メモ管理 =====
+  const MEMOS = (typeof STATION_MEMOS !== 'undefined') ? { ...STATION_MEMOS } : {};
   function memoCount(sid) {
     return (MEMOS[sid] && MEMOS[sid].length) || 0;
   }
+
+  // ===== GitHub PAT 認証・保存 =====
+  const REPO_OWNER = 'Sr-ICE';
+  const REPO_NAME = 'route-map';
+  const FILE_PATH = 'memos.js';
+  const PAT_KEY = 'route-map.github-pat';
+
+  const getPat = () => localStorage.getItem(PAT_KEY) || '';
+  const setPat = (t) => localStorage.setItem(PAT_KEY, t);
+  const clearPat = () => localStorage.removeItem(PAT_KEY);
+
+  function genMemosJs(data) {
+    return `// ===== 駅メモ（お気に入りショップ）データ =====
+// アプリの「保存」ボタンで自動更新されるファイル。手動編集も可能。
+// キー: 駅id（data.jsのSTATIONSと同じ）
+// 値: { name, genre, url, memo } の配列
+
+const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
+`;
+  }
+
+  async function ghGetFile() {
+    const pat = getPat();
+    if (!pat) throw new Error('PAT未設定');
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=main`,
+      { headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' } }
+    );
+    if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
+    return res.json();  // { sha, content (base64), ... }
+  }
+
+  async function ghPutFile(content, sha, message) {
+    const pat = getPat();
+    if (!pat) throw new Error('PAT未設定');
+    // UTF-8 → base64 (絵文字・日本語対応)
+    const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(content)));
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
+      {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' },
+        body: JSON.stringify({
+          message: message || 'Update memos.js via app',
+          content: b64,
+          sha: sha,
+          branch: 'main',
+        }),
+      }
+    );
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`保存失敗: ${res.status} ${err.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
+  async function saveMemoToGithub(sid, newList) {
+    // 1) 現在のファイルを取得（最新のsha）
+    const cur = await ghGetFile();
+    // 2) 現在のmemos.jsを評価して現状取得（リモート最新を反映）
+    const decoded = new TextDecoder().decode(
+      Uint8Array.from(atob(cur.content.replace(/\s/g, '')), c => c.charCodeAt(0))
+    );
+    let remoteMemos = {};
+    try {
+      // 簡易抽出: const STATION_MEMOS = {...}; をパース
+      const m = decoded.match(/const\s+STATION_MEMOS\s*=\s*([\s\S]*?);[\s]*$/m);
+      if (m) {
+        // JSON.parse で評価（信頼できる自リポなので安全）
+        remoteMemos = JSON.parse(m[1].replace(/\/\/.*$/gm, '').trim());
+      }
+    } catch (e) {
+      console.warn('remote memos parse failed, using local memos as base', e);
+      remoteMemos = { ...MEMOS };
+    }
+    // 3) 該当駅のメモを更新
+    remoteMemos[sid] = newList;
+    // 4) 新しい memos.js コンテンツ生成
+    const newContent = genMemosJs(remoteMemos);
+    // 5) PUT
+    await ghPutFile(newContent, cur.sha, `Add memo to ${sid}`);
+    // 6) ローカル状態も更新
+    Object.assign(MEMOS, remoteMemos);
+  }
+
+  // ===== 設定モーダル =====
+  function updatePatStatus() {
+    const el = document.getElementById('pat-status');
+    const pat = getPat();
+    if (pat) {
+      el.innerHTML = `<span class="pat-status__ok">● PAT登録済み</span> <span class="pat-status__masked">${pat.slice(0, 12)}…</span>`;
+    } else {
+      el.innerHTML = `<span class="pat-status__off">○ PAT未登録</span>（保存はクリップボードコピーになります）`;
+    }
+  }
+
+  document.getElementById('open-settings').addEventListener('click', () => {
+    updatePatStatus();
+    document.getElementById('pat-input').value = '';
+    document.getElementById('settings-modal').removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+  });
+
+  document.getElementById('settings-modal').addEventListener('click', (e) => {
+    if (e.target.hasAttribute('data-close')) {
+      document.getElementById('settings-modal').setAttribute('hidden', '');
+      document.body.style.overflow = '';
+    }
+  });
+
+  document.getElementById('pat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = document.getElementById('pat-input').value.trim();
+    if (!v) return;
+    setPat(v);
+    updatePatStatus();
+    toast('PATを保存しました');
+  });
+
+  document.getElementById('pat-clear').addEventListener('click', () => {
+    if (!confirm('PATを削除しますか？')) return;
+    clearPat();
+    updatePatStatus();
+    toast('PATを削除しました');
+  });
 
   // ===== 駅ラベル方向の決定 =====
   // 駅の周りの線の方向を見て、ラベルを最適な向きに配置
@@ -688,6 +814,46 @@
     });
   }
 
+  // ===== メモバッジ即時反映 =====
+  function rebuildMemoBadges() {
+    // マップ駅丸
+    document.querySelectorAll('.station-circle').forEach(c => {
+      const sid = c.dataset.station;
+      const hasMemo = memoCount(sid) > 0;
+      c.classList.toggle('has-memo', hasMemo);
+      if (hasMemo) {
+        c.setAttribute('stroke', '#F4A300');
+      } else {
+        const lines = (c.dataset.lines || '').split(',');
+        const isTransfer = lines.length >= 2;
+        if (isTransfer) {
+          c.setAttribute('stroke', '#1d1d1f');
+        } else {
+          const lineColor = LINES.find(l => l.id === lines[0])?.color || '#333';
+          c.setAttribute('stroke', lineColor);
+        }
+      }
+    });
+    // リスト駅セル
+    document.querySelectorAll('.list-station').forEach(li => {
+      const sid = li.dataset.station;
+      const mc = memoCount(sid);
+      li.classList.toggle('has-memo', mc > 0);
+      let badge = li.querySelector('.list-station__memo-badge');
+      if (mc > 0) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'list-station__memo-badge';
+          const name = li.querySelector('.list-station__name');
+          name.insertAdjacentElement('afterend', badge);
+        }
+        badge.textContent = `★ ${mc}`;
+      } else if (badge) {
+        badge.remove();
+      }
+    });
+  }
+
   // ===== 駅メモモーダル =====
   function openMemoModal(sid) {
     const station = STATIONS[sid];
@@ -744,21 +910,24 @@
             <span class="memo-field__label">メモ</span>
             <textarea name="memo" rows="3" placeholder="自由メモ"></textarea>
           </label>
-          <button type="submit" class="memo-form__submit">JSONをコピー</button>
+          <button type="submit" class="memo-form__submit">${getPat() ? '保存（GitHubに自動push）' : 'JSONをコピー（PAT未設定）'}</button>
         </form>
-        <details class="memo-help">
-          <summary>反映方法</summary>
-          <ol>
-            <li>「JSONをコピー」を押す</li>
-            <li>GitHubの <code>memos.js</code> を開く</li>
-            <li><code>'${sid}': [ ... ]</code> に貼り付け（既存ならカンマで追加）</li>
-            <li>commit → push で反映</li>
-          </ol>
-        </details>
+        ${getPat() ? '' : `
+          <details class="memo-help">
+            <summary>手動で memos.js に反映する手順</summary>
+            <ol>
+              <li>「JSONをコピー」を押す</li>
+              <li>GitHubの <code>memos.js</code> を開く</li>
+              <li><code>"${sid}": [ ... ]</code> に貼り付け（既存ならカンマで追加）</li>
+              <li>commit → push で反映</li>
+            </ol>
+            <p>⚙ ボタンから PAT を登録するとワンタップ保存になります。</p>
+          </details>
+        `}
       </section>
     `;
 
-    document.getElementById('memo-form').addEventListener('submit', (e) => {
+    document.getElementById('memo-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const memoObj = {
@@ -768,14 +937,32 @@
         memo:  (fd.get('memo')  || '').trim(),
       };
       if (!memoObj.name) return;
-      // 既存メモと結合した配列を生成
       const merged = [...memos, memoObj];
-      const json = `  '${sid}': ${JSON.stringify(merged, null, 4).replace(/\n/g, '\n  ')},`;
-      navigator.clipboard.writeText(json).then(() => {
-        toast('JSONをクリップボードにコピーしました。memos.js に貼り付けてください。');
-      }).catch(() => {
-        toast('コピーに失敗しました。下記をコピーしてください: ' + json);
-      });
+
+      const submitBtn = e.target.querySelector('.memo-form__submit');
+
+      if (getPat()) {
+        const originalText = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.textContent = '保存中...';
+        try {
+          await saveMemoToGithub(sid, merged);
+          toast('保存完了（Pagesに1〜2分で反映）');
+          rebuildMemoBadges();
+          openMemoModal(sid);  // 再描画
+        } catch (err) {
+          toast('保存失敗: ' + err.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
+        }
+      } else {
+        const json = `  "${sid}": ${JSON.stringify(merged, null, 2).replace(/\n/g, '\n  ')},`;
+        navigator.clipboard.writeText(json).then(() => {
+          toast('JSONをコピー。memos.js に貼り付けてください');
+        }).catch(() => {
+          prompt('下記をコピーしてください:', json);
+        });
+      }
     });
 
     modal.removeAttribute('hidden');
