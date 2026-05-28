@@ -205,8 +205,13 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=main`,
       { headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' } }
     );
-    if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
-    return res.json();  // { sha, content (base64), ... }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      let detail = '';
+      try { detail = JSON.parse(errText).message || ''; } catch { detail = errText.slice(0, 120); }
+      throw new Error(`取得失敗: ${res.status} ${detail}`);
+    }
+    return res.json();
   }
 
   // UTF-8文字列 → base64（日本語・絵文字対応、スタック溢れ対策）
@@ -378,6 +383,44 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     updatePatStatus();
     updateSettingsDot();
     toast('PATを削除しました');
+  });
+
+  // PAT接続テスト: /user とリポジトリの両方を叩いて確認
+  document.getElementById('pat-test').addEventListener('click', async () => {
+    const resultEl = document.getElementById('pat-test-result');
+    const pat = getPat();
+    if (!pat) {
+      resultEl.className = 'pat-test-result is-error';
+      resultEl.textContent = '先にPATを保存してください';
+      return;
+    }
+    resultEl.className = 'pat-test-result is-loading';
+    resultEl.textContent = '確認中...';
+    try {
+      // 1) /user で認証確認
+      const userRes = await fetch('https://api.github.com/user', {
+        headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' }
+      });
+      if (!userRes.ok) {
+        const t = await userRes.text();
+        throw new Error(`認証失敗 (${userRes.status}): ${t.slice(0, 100)}`);
+      }
+      const user = await userRes.json();
+      // 2) リポジトリアクセス確認
+      const repoRes = await fetch(
+        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=main`,
+        { headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' } }
+      );
+      if (!repoRes.ok) {
+        const t = await repoRes.text();
+        throw new Error(`リポジトリアクセス失敗 (${repoRes.status}): ${t.slice(0, 100)}`);
+      }
+      resultEl.className = 'pat-test-result is-success';
+      resultEl.textContent = `✓ 成功 — user: ${user.login} / リポジトリ書込OK`;
+    } catch (err) {
+      resultEl.className = 'pat-test-result is-error';
+      resultEl.textContent = '✗ ' + err.message;
+    }
   });
 
   // 起動時：期限チェックして必要なら警告トースト

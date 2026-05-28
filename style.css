@@ -983,6 +983,21 @@ body {
 
 .pat-howto a:hover { text-decoration: underline; }
 
+.pat-test-result {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, "SF Mono", monospace;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.pat-test-result:empty { display: none; }
+.pat-test-result.is-loading { background: var(--bg-elevated); color: var(--text-secondary); }
+.pat-test-result.is-success { background: #E8F5EE; color: #1F8B4C; font-weight: 600; }
+.pat-test-result.is-error { background: #FDEAEA; color: #C00; font-weight: 600; }
+
 .pat-howto code {
   background: var(--bg-elevated);
   padding: 1px 6px;
