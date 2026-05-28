@@ -157,10 +157,36 @@
   const REPO_NAME = 'route-map';
   const FILE_PATH = 'memos.js';
   const PAT_KEY = 'route-map.github-pat';
+  const PAT_EXPIRY_KEY = 'route-map.github-pat-expiry';
 
   const getPat = () => localStorage.getItem(PAT_KEY) || '';
   const setPat = (t) => localStorage.setItem(PAT_KEY, t);
-  const clearPat = () => localStorage.removeItem(PAT_KEY);
+  const getPatExpiry = () => localStorage.getItem(PAT_EXPIRY_KEY) || '';
+  const setPatExpiry = (d) => d ? localStorage.setItem(PAT_EXPIRY_KEY, d) : localStorage.removeItem(PAT_EXPIRY_KEY);
+  const clearPat = () => {
+    localStorage.removeItem(PAT_KEY);
+    localStorage.removeItem(PAT_EXPIRY_KEY);
+  };
+
+  // PAT 期限までの残り日数を返す（期限未設定なら null）
+  function patDaysLeft() {
+    const exp = getPatExpiry();
+    if (!exp) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expDate = new Date(exp + 'T00:00:00');
+    const diffMs = expDate.getTime() - today.getTime();
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }
+
+  function patAlertLevel() {
+    const d = patDaysLeft();
+    if (d === null) return 'none';     // 期限未設定（無期限想定）
+    if (d < 0) return 'expired';        // 期限切れ
+    if (d <= 3) return 'critical';      // 3日以内
+    if (d <= 14) return 'warning';      // 14日以内
+    return 'ok';
+  }
 
   function genMemosJs(data) {
     return `// ===== 駅メモ（お気に入りショップ）データ =====
@@ -241,16 +267,46 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
   function updatePatStatus() {
     const el = document.getElementById('pat-status');
     const pat = getPat();
-    if (pat) {
-      el.innerHTML = `<span class="pat-status__ok">● PAT登録済み</span> <span class="pat-status__masked">${pat.slice(0, 12)}…</span>`;
+    if (!pat) {
+      el.innerHTML = `<span class="pat-status__off">○ PAT未登録</span><br><small>保存はクリップボードコピーになります</small>`;
+      return;
+    }
+    const level = patAlertLevel();
+    const days = patDaysLeft();
+    const masked = `<span class="pat-status__masked">${pat.slice(0, 12)}…</span>`;
+    if (level === 'expired') {
+      el.innerHTML = `<span class="pat-status__expired">⚠ PAT期限切れ（${-days}日経過）</span> ${masked}<br><small>新しいPATを発行して登録してください</small>`;
+    } else if (level === 'critical') {
+      el.innerHTML = `<span class="pat-status__critical">⚠ あと${days}日で失効</span> ${masked}<br><small>新しいPATを発行する準備をしてください</small>`;
+    } else if (level === 'warning') {
+      el.innerHTML = `<span class="pat-status__warning">▲ あと${days}日で失効</span> ${masked}`;
+    } else if (level === 'ok') {
+      el.innerHTML = `<span class="pat-status__ok">● PAT登録済み</span>（あと${days}日） ${masked}`;
     } else {
-      el.innerHTML = `<span class="pat-status__off">○ PAT未登録</span>（保存はクリップボードコピーになります）`;
+      el.innerHTML = `<span class="pat-status__ok">● PAT登録済み（期限未設定）</span> ${masked}`;
+    }
+  }
+
+  // ヘッダー設定ドット表示
+  function updateSettingsDot() {
+    const dot = document.getElementById('settings-dot');
+    if (!dot) return;
+    const level = patAlertLevel();
+    if (level === 'critical' || level === 'expired') {
+      dot.removeAttribute('hidden');
+      dot.className = 'header-settings__dot is-critical';
+    } else if (level === 'warning') {
+      dot.removeAttribute('hidden');
+      dot.className = 'header-settings__dot is-warning';
+    } else {
+      dot.setAttribute('hidden', '');
     }
   }
 
   document.getElementById('open-settings').addEventListener('click', () => {
     updatePatStatus();
     document.getElementById('pat-input').value = '';
+    document.getElementById('pat-expiry').value = getPatExpiry();
     document.getElementById('settings-modal').removeAttribute('hidden');
     document.body.style.overflow = 'hidden';
   });
@@ -265,9 +321,21 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
   document.getElementById('pat-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const v = document.getElementById('pat-input').value.trim();
-    if (!v) return;
+    const exp = document.getElementById('pat-expiry').value;
+    if (!v) {
+      // 期限だけ更新するケース（既存PAT流用）
+      if (getPat() && exp !== getPatExpiry()) {
+        setPatExpiry(exp);
+        updatePatStatus();
+        updateSettingsDot();
+        toast('有効期限を更新しました');
+      }
+      return;
+    }
     setPat(v);
+    setPatExpiry(exp);
     updatePatStatus();
+    updateSettingsDot();
     toast('PATを保存しました');
   });
 
@@ -275,8 +343,22 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     if (!confirm('PATを削除しますか？')) return;
     clearPat();
     updatePatStatus();
+    updateSettingsDot();
     toast('PATを削除しました');
   });
+
+  // 起動時：期限チェックして必要なら警告トースト
+  function checkPatExpiryOnLoad() {
+    const level = patAlertLevel();
+    if (level === 'expired') {
+      toast('⚠ PATが期限切れです。設定から更新してください');
+    } else if (level === 'critical') {
+      toast(`⚠ PATがあと${patDaysLeft()}日で失効します`);
+    } else if (level === 'warning') {
+      // ヘッダードットのみ、トーストは出さない
+    }
+    updateSettingsDot();
+  }
 
   // ===== 駅ラベル方向の決定 =====
   // 駅の周りの線の方向を見て、ラベルを最適な向きに配置
@@ -1026,5 +1108,6 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     setupPanZoom();
     setupTabs();
     updateVisibility();
+    checkPatExpiryOnLoad();
   });
 })();
