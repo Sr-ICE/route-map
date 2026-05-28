@@ -209,11 +209,21 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     return res.json();  // { sha, content (base64), ... }
   }
 
+  // UTF-8文字列 → base64（日本語・絵文字対応、スタック溢れ対策）
+  function utf8ToBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
+
   async function ghPutFile(content, sha, message) {
     const pat = getPat();
     if (!pat) throw new Error('PAT未設定');
-    // UTF-8 → base64 (絵文字・日本語対応)
-    const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(content)));
+    const b64 = utf8ToBase64(content);
     const res = await fetch(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
       {
@@ -235,32 +245,55 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
   }
 
   async function saveMemoToGithub(sid, newList) {
-    // 1) 現在のファイルを取得（最新のsha）
-    const cur = await ghGetFile();
-    // 2) 現在のmemos.jsを評価して現状取得（リモート最新を反映）
-    const decoded = new TextDecoder().decode(
-      Uint8Array.from(atob(cur.content.replace(/\s/g, '')), c => c.charCodeAt(0))
-    );
-    let remoteMemos = {};
+    let stage = 'fetch';
     try {
-      // 簡易抽出: const STATION_MEMOS = {...}; をパース
-      const m = decoded.match(/const\s+STATION_MEMOS\s*=\s*([\s\S]*?);[\s]*$/m);
-      if (m) {
-        // JSON.parse で評価（信頼できる自リポなので安全）
-        remoteMemos = JSON.parse(m[1].replace(/\/\/.*$/gm, '').trim());
+      // 1) 現在のファイルを取得（最新のsha）
+      const cur = await ghGetFile();
+      const rawContent = (cur && cur.content) ? cur.content.replace(/\s/g, '') : '';
+
+      // 2) リモート memos を最善努力でパース。失敗時はローカルベース
+      stage = 'parse';
+      let remoteMemos = { ...MEMOS };
+      if (rawContent) {
+        try {
+          const decoded = new TextDecoder().decode(
+            Uint8Array.from(atob(rawContent), c => c.charCodeAt(0))
+          );
+          const m = decoded.match(/const\s+STATION_MEMOS\s*=\s*({[\s\S]*?})\s*;?\s*$/m);
+          if (m) {
+            // コメント/トレーリングカンマを掃除して JSON.parse
+            const cleaned = m[1]
+              .replace(/\/\/.*$/gm, '')
+              .replace(/\/\*[\s\S]*?\*\//g, '')
+              .replace(/,(\s*[}\]])/g, '$1');
+            try {
+              remoteMemos = JSON.parse(cleaned);
+            } catch {
+              // JSONとして読めない場合は無理せずローカルベース
+              remoteMemos = { ...MEMOS };
+            }
+          }
+        } catch (e) {
+          console.warn('decode failed, using local memos', e);
+        }
       }
-    } catch (e) {
-      console.warn('remote memos parse failed, using local memos as base', e);
-      remoteMemos = { ...MEMOS };
+
+      // 3) 該当駅のメモを更新
+      remoteMemos[sid] = newList;
+
+      // 4) 新しい memos.js コンテンツ生成
+      stage = 'serialize';
+      const newContent = genMemosJs(remoteMemos);
+
+      // 5) PUT
+      stage = 'put';
+      await ghPutFile(newContent, cur.sha, `Add memo to ${sid}`);
+
+      // 6) ローカル状態も更新
+      Object.assign(MEMOS, remoteMemos);
+    } catch (err) {
+      throw new Error(`[${stage}] ${err.message || err}`);
     }
-    // 3) 該当駅のメモを更新
-    remoteMemos[sid] = newList;
-    // 4) 新しい memos.js コンテンツ生成
-    const newContent = genMemosJs(remoteMemos);
-    // 5) PUT
-    await ghPutFile(newContent, cur.sha, `Add memo to ${sid}`);
-    // 6) ローカル状態も更新
-    Object.assign(MEMOS, remoteMemos);
   }
 
   // ===== 設定モーダル =====
