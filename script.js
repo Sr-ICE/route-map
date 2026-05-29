@@ -353,6 +353,7 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     if (e.target.hasAttribute('data-close')) {
       document.getElementById('settings-modal').setAttribute('hidden', '');
       document.body.style.overflow = '';
+      if (window.__resetPanZoom) window.__resetPanZoom();
     }
   });
 
@@ -817,6 +818,13 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     viewport.addEventListener('pointercancel', endPointer);
     viewport.addEventListener('pointerleave', endPointer);
 
+    // パン/ズーム状態を強制リセット（モーダル等で操作競合した時用）
+    window.__resetPanZoom = function() {
+      pointers.clear();
+      isDragging = false;
+      lastPinchDist = 0;
+    };
+
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
@@ -864,9 +872,9 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       const contentH = Math.max(maxY - minY, 200);
       const screenR = rect.width / rect.height;
       const contentR = contentW / contentH;
-      const padFactor = 1.15;
+      const padFactor = 1.08;
 
-      // コンテンツ全体が画面に収まる範囲でフィット（aspect不一致は余白）
+      // まずコンテンツ全体が画面に収まるようフィット
       let vbW, vbH;
       if (contentR > screenR) {
         vbW = contentW * padFactor;
@@ -874,6 +882,18 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       } else {
         vbH = contentH * padFactor;
         vbW = vbH * screenR;
+      }
+
+      // aspect不一致で空白が大きすぎる場合はズームインして画面を埋める
+      // 短辺方向の充填率が低いと地図が小さく見えるので 0.55 以上を確保
+      const fillRateShort = (contentR > screenR)
+        ? contentH / vbH
+        : contentW / vbW;
+      const minFill = 0.55;
+      if (fillRateShort < minFill) {
+        const zoom = minFill / fillRateShort;
+        vbW /= zoom;
+        vbH /= zoom;
       }
 
       const cx = (minX + maxX) / 2;
@@ -972,6 +992,20 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     });
   }
 
+  // ===== ジャンル・タグ定義 =====
+  const GENRE_TAGS = {
+    'カフェ':       ['Wi-Fi', '電源', '禁煙', '喫煙OK', '24時間', '静か', 'おしゃれ', 'チェーン'],
+    'レストラン':   ['個室', '予約必要', 'カード可', 'テイクアウト', 'ランチ', 'ディナー', '飲み放題'],
+    'バー/居酒屋':  ['個室', '予約必要', '深夜営業', '隠れ家', 'カード可'],
+    '商業施設':     ['駐車場', '深夜営業', '日曜営業'],
+    'レジャー':     ['屋内', '屋外', '予約必要', '子供OK', '雨でもOK'],
+    '書店':         ['雑誌', '専門書', '古書', 'カフェ併設'],
+    'ホテル':       ['朝食付き', '駐車場', 'Wi-Fi', '禁煙'],
+    '雑貨':         ['チェーン', 'セレクト'],
+    'その他':       [],
+  };
+  const GENRE_LIST = Object.keys(GENRE_TAGS);
+
   // ===== メモバッジ即時反映 =====
   function rebuildMemoBadges() {
     // マップ駅丸
@@ -1039,6 +1073,7 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
               <span class="memo-item__name">${escapeHtml(m.name)}</span>
               ${m.genre ? `<span class="memo-item__genre">${escapeHtml(m.genre)}</span>` : ''}
             </div>
+            ${(m.tags && m.tags.length) ? `<div class="memo-item__tags">${m.tags.map(t => `<span class="memo-item__tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
             ${m.memo ? `<p class="memo-item__memo">${escapeHtml(m.memo)}</p>` : ''}
             ${m.url ? `<a class="memo-item__url" href="${escapeAttr(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.url)} ↗</a>` : ''}
           </li>
@@ -1054,15 +1089,29 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         <form class="memo-form" id="memo-form">
           <label class="memo-field">
             <span class="memo-field__label">店名 *</span>
-            <input type="text" name="name" required placeholder="例: モンブラン">
+            <input type="text" name="name" id="memo-name" required placeholder="例: モンブラン">
           </label>
-          <label class="memo-field">
+          <div class="memo-field">
             <span class="memo-field__label">ジャンル</span>
-            <input type="text" name="genre" placeholder="例: 洋菓子 / カフェ / ラーメン">
-          </label>
+            <div class="pill-group" id="genre-pills">
+              ${GENRE_LIST.map((g, i) => `
+                <label class="pill-item">
+                  <input type="radio" name="genre" value="${g}" ${i === 0 ? '' : ''}>
+                  <span>${g}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="memo-field" id="tags-field" hidden>
+            <span class="memo-field__label">タグ（複数選択可）</span>
+            <div class="pill-group" id="tag-pills"></div>
+          </div>
           <label class="memo-field">
             <span class="memo-field__label">URL</span>
-            <input type="url" name="url" placeholder="https://...">
+            <div class="memo-field__row">
+              <input type="url" name="url" id="memo-url" placeholder="https://...">
+              <button type="button" class="memo-field__btn" id="search-url-btn" title="店名と駅名でGoogle検索">🔍</button>
+            </div>
           </label>
           <label class="memo-field">
             <span class="memo-field__label">メモ</span>
@@ -1085,16 +1134,50 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       </section>
     `;
 
+    // ジャンル切替でタグ pill 群を再生成
+    const tagsField = document.getElementById('tags-field');
+    const tagPills = document.getElementById('tag-pills');
+    document.getElementById('genre-pills').addEventListener('change', (ev) => {
+      const r = ev.target.closest('input[type=radio]');
+      if (!r) return;
+      const genre = r.value;
+      const tags = GENRE_TAGS[genre] || [];
+      if (tags.length === 0) {
+        tagsField.setAttribute('hidden', '');
+        tagPills.innerHTML = '';
+        return;
+      }
+      tagsField.removeAttribute('hidden');
+      tagPills.innerHTML = tags.map(t => `
+        <label class="pill-item pill-item--check">
+          <input type="checkbox" name="tag" value="${t}">
+          <span>${t}</span>
+        </label>
+      `).join('');
+    });
+
+    // URL検索ボタン: 店名 + 駅名でGoogle検索を新タブで開く
+    document.getElementById('search-url-btn').addEventListener('click', () => {
+      const name = document.getElementById('memo-name').value.trim();
+      if (!name) { toast('先に店名を入力してください'); return; }
+      const q = encodeURIComponent(`${name} ${station.name}`);
+      window.open(`https://www.google.com/search?q=${q}`, '_blank', 'noopener');
+    });
+
     document.getElementById('memo-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const tags = fd.getAll('tag').map(t => String(t).trim()).filter(Boolean);
       const memoObj = {
         name:  (fd.get('name')  || '').trim(),
         genre: (fd.get('genre') || '').trim(),
+        tags:  tags,
         url:   (fd.get('url')   || '').trim(),
         memo:  (fd.get('memo')  || '').trim(),
       };
       if (!memoObj.name) return;
+      // タグ空配列は省略
+      if (memoObj.tags.length === 0) delete memoObj.tags;
       const merged = [...memos, memoObj];
 
       const submitBtn = e.target.querySelector('.memo-form__submit');
@@ -1125,11 +1208,14 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
 
     modal.removeAttribute('hidden');
     document.body.style.overflow = 'hidden';
+    // パン/ズームの pointer 状態が残らないようリセット
+    if (window.__resetPanZoom) window.__resetPanZoom();
   }
 
   function closeMemoModal() {
     document.getElementById('memo-modal').setAttribute('hidden', '');
     document.body.style.overflow = '';
+    if (window.__resetPanZoom) window.__resetPanZoom();
   }
 
   document.getElementById('memo-modal').addEventListener('click', (e) => {

@@ -808,6 +808,82 @@ body {
   font-weight: 600;
 }
 
+.memo-item__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.memo-item__tag {
+  font-size: 10px;
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+
+/* ===== pill ボタン群（ジャンル・タグ選択） ===== */
+.pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pill-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.pill-item input {
+  display: none;
+}
+
+.pill-item:has(input:checked) {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.pill-item--check:has(input:checked) {
+  background: rgba(0,122,255,0.15);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.memo-field__row {
+  display: flex;
+  gap: 6px;
+}
+
+.memo-field__row input { flex: 1; }
+
+.memo-field__btn {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  font-size: 16px;
+  width: 42px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.memo-field__btn:hover { background: var(--bg-elevated); }
+.memo-field__btn:active { transform: scale(0.95); }
+
 .memo-item__memo {
   margin: 4px 0 0;
   font-size: 13px;
