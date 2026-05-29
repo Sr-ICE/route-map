@@ -15,6 +15,7 @@
       <nav class="tab-nav" role="tablist">
         <button class="tab-btn is-active" data-tab="map" role="tab" aria-selected="true">マップ</button>
         <button class="tab-btn" data-tab="list" role="tab" aria-selected="false">リスト</button>
+        <button class="tab-btn" data-tab="memos" role="tab" aria-selected="false">メモ</button>
       </nav>
       <button class="header-settings" id="open-settings" aria-label="設定">
         <span class="header-settings__icon">⚙</span>
@@ -56,6 +57,19 @@
   <!-- リストビュー -->
   <main class="view view-list" id="view-list" role="tabpanel" hidden>
     <div class="list-container" id="list-container"></div>
+  </main>
+
+  <!-- 全駅メモビュー -->
+  <main class="view view-memos" id="view-memos" role="tabpanel" hidden>
+    <div class="memos-toolbar">
+      <div class="memos-search">
+        <span class="memos-search__icon">🔍</span>
+        <input type="search" id="memos-search-input" placeholder="店名・タグ・駅名で検索" />
+        <button type="button" id="memos-search-clear" class="memos-search__clear" aria-label="クリア" hidden>×</button>
+      </div>
+      <div class="memos-filter" id="memos-genre-filter"></div>
+    </div>
+    <div class="memos-list" id="memos-list"></div>
   </main>
 
   <!-- 設定モーダル -->

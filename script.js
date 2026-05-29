@@ -1367,6 +1367,133 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     return escapeHtml(s);
   }
 
+  // ===== 全駅メモビュー =====
+  const memosFilterState = {
+    query: '',
+    genre: null,  // null=すべて
+  };
+
+  function flattenMemos() {
+    const arr = [];
+    Object.entries(MEMOS).forEach(([sid, list]) => {
+      const station = STATIONS[sid];
+      if (!station || !Array.isArray(list)) return;
+      const lineIds = Array.from(stationLineMap[sid] || []);
+      const lines = lineIds.map(lid => LINES.find(l => l.id === lid)).filter(Boolean);
+      list.forEach((m, idx) => {
+        arr.push({
+          sid, idx,
+          stationName: station.name,
+          lines,
+          ...m,
+        });
+      });
+    });
+    return arr;
+  }
+
+  function buildMemosFilter() {
+    const el = document.getElementById('memos-genre-filter');
+    if (!el) return;
+    const pills = ['すべて', ...GENRE_LIST].map(g => `
+      <button type="button" class="memos-pill ${(g === 'すべて' && !memosFilterState.genre) || g === memosFilterState.genre ? 'is-active' : ''}" data-genre="${g === 'すべて' ? '' : g}">
+        ${g === 'すべて' ? g : (GENRE_ICONS[g] || '') + ' ' + g}
+      </button>
+    `).join('');
+    el.innerHTML = pills;
+  }
+
+  function buildMemosView() {
+    const listEl = document.getElementById('memos-list');
+    if (!listEl) return;
+    const all = flattenMemos();
+    const q = memosFilterState.query.trim().toLowerCase();
+    const filtered = all.filter(m => {
+      if (memosFilterState.genre && m.genre !== memosFilterState.genre) return false;
+      if (!q) return true;
+      const haystack = [
+        m.name, m.genre, m.memo, m.stationName,
+        ...(m.tags || []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+
+    if (filtered.length === 0) {
+      const empty = all.length === 0
+        ? 'まだメモがありません。駅をタップして追加してください。'
+        : '条件に一致するメモがありません。';
+      listEl.innerHTML = `<p class="memos-empty">${empty}</p>`;
+      return;
+    }
+
+    listEl.innerHTML = `
+      <div class="memos-count">${filtered.length}件 / 全${all.length}件</div>
+      <ul class="memos-cards">
+        ${filtered.map(m => {
+          const genre = m.genre || 'その他';
+          const icon = GENRE_ICONS[genre] || '📍';
+          const color = GENRE_COLORS[genre] || '#888';
+          const lineChips = m.lines.map(l =>
+            `<span class="memos-card__line"><span style="background:${l.color}"></span>${l.name}</span>`
+          ).join('');
+          return `
+            <li class="memos-card" data-sid="${m.sid}" data-idx="${m.idx}">
+              <div class="memos-card__head">
+                <span class="memos-card__icon" style="background:${color}1A;color:${color}">${icon}</span>
+                <div class="memos-card__title">
+                  <span class="memos-card__name">${escapeHtml(m.name)}</span>
+                  <span class="memos-card__station">${escapeHtml(m.stationName)}駅</span>
+                </div>
+                ${m.genre ? `<span class="memos-card__genre" style="background:${color}1A;color:${color}">${escapeHtml(m.genre)}</span>` : ''}
+              </div>
+              ${(m.tags && m.tags.length) ? `<div class="memos-card__tags">${m.tags.map(t => `<span class="memos-card__tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+              ${m.memo ? `<p class="memos-card__memo">${escapeHtml(m.memo)}</p>` : ''}
+              <div class="memos-card__foot">
+                ${m.url ? `<a class="memos-card__url" href="${escapeAttr(m.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">URL ↗</a>` : ''}
+                <div class="memos-card__lines">${lineChips}</div>
+              </div>
+            </li>
+          `;
+        }).join('')}
+      </ul>
+    `;
+  }
+
+  function setupMemosView() {
+    const searchInput = document.getElementById('memos-search-input');
+    const clearBtn = document.getElementById('memos-search-clear');
+    const filterEl = document.getElementById('memos-genre-filter');
+    const listEl = document.getElementById('memos-list');
+
+    searchInput.addEventListener('input', (e) => {
+      memosFilterState.query = e.target.value;
+      clearBtn.toggleAttribute('hidden', !e.target.value);
+      buildMemosView();
+    });
+    clearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      memosFilterState.query = '';
+      clearBtn.setAttribute('hidden', '');
+      buildMemosView();
+      searchInput.focus();
+    });
+    filterEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.memos-pill');
+      if (!btn) return;
+      const g = btn.dataset.genre || null;
+      memosFilterState.genre = g;
+      buildMemosFilter();
+      buildMemosView();
+    });
+    // カードタップで該当駅のメモモーダル開く
+    listEl.addEventListener('click', (e) => {
+      const card = e.target.closest('.memos-card');
+      if (!card) return;
+      const sid = card.dataset.sid;
+      if (sid) openMemoModal(sid);
+    });
+  }
+
   // ===== タブ切り替え =====
   function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1382,9 +1509,23 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
           if (isActive) v.removeAttribute('hidden');
           else v.setAttribute('hidden', '');
         });
+        // メモタブ開いた時に最新で再構築
+        if (tab === 'memos') {
+          buildMemosFilter();
+          buildMemosView();
+        }
       });
     });
   }
+
+  // メモ保存/削除時にメモビューも更新するよう rebuildMemoBadges を拡張
+  const _origRebuild = rebuildMemoBadges;
+  rebuildMemoBadges = function() {
+    _origRebuild();
+    if (document.getElementById('view-memos').classList.contains('is-active')) {
+      buildMemosView();
+    }
+  };
 
   // ===== 初期化 =====
   document.addEventListener('DOMContentLoaded', () => {
@@ -1393,6 +1534,9 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     buildList();
     setupPanZoom();
     setupTabs();
+    setupMemosView();
+    buildMemosFilter();
+    buildMemosView();
     updateVisibility();
     checkPatExpiryOnLoad();
   });
