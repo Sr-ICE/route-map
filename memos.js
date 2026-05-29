@@ -26,5 +26,13 @@ const STATION_MEMOS = {
       "url": "",
       "memo": "高い"
     }
+  ],
+  "harajuku": [
+    {
+      "name": "ピッツァアルトランチョ",
+      "genre": "レストラン",
+      "url": "https://spontini.jp/harajuku.html",
+      "memo": "でけぇピッツァ🍕"
+    }
   ]
 };
