@@ -68,6 +68,16 @@
         <button type="button" id="memos-search-clear" class="memos-search__clear" aria-label="クリア" hidden>×</button>
       </div>
       <div class="memos-filter" id="memos-genre-filter"></div>
+      <div class="memos-sort">
+        <label for="memos-sort-select">並び順:</label>
+        <select id="memos-sort-select">
+          <option value="added">追加順（新しい順）</option>
+          <option value="added-asc">追加順（古い順）</option>
+          <option value="name">店名（あいうえお順）</option>
+          <option value="station">駅名</option>
+          <option value="genre">ジャンル</option>
+        </select>
+      </div>
     </div>
     <div class="memos-list" id="memos-list"></div>
   </main>

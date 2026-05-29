@@ -636,6 +636,12 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       openMemoModal(c.dataset.station);
     });
 
+    // メモバッジレイヤー（駅丸の右上に件数バッジ）
+    const memoBadgeLayer = document.createElementNS(NS, 'g');
+    memoBadgeLayer.setAttribute('id', 'memo-badge-layer');
+    svg.appendChild(memoBadgeLayer);
+    renderMemoBadgesSvg();
+
     // ラベルレイヤー（駅の進行方向に対し垂直方向に配置）
     const labelsLayer = document.createElementNS(NS, 'g');
     labelsLayer.setAttribute('id', 'labels-layer');
@@ -715,13 +721,10 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     }
 
     // ズーム倍率に応じて駅丸サイズ・フォントサイズを補正
-    // (線は CSS の vector-effect で対応済み)
     function updateNonScalingElements() {
       const rect = viewport.getBoundingClientRect();
       if (rect.width === 0) return;
-      // 画面1ピクセルあたりのviewBox単位数
       const pxPerUnit = state.viewBox.w / rect.width;
-      // 各要素を「実ピクセル基準」のサイズに変換
       document.querySelectorAll('.station-circle').forEach(el => {
         const baseR = el.classList.contains('is-transfer') ? 6 : 3.5;
         el.setAttribute('r', baseR * pxPerUnit);
@@ -732,11 +735,19 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         el.setAttribute('font-size', baseFs * pxPerUnit);
         el.setAttribute('stroke-width', 3.5 * pxPerUnit);
       });
-      // 線も viewBox 単位で stroke を一定 px に
       document.querySelectorAll('.line-path').forEach(el => {
         el.setAttribute('stroke-width', 7 * pxPerUnit);
       });
+      // メモバッジも一定px化
+      document.querySelectorAll('.memo-badge-svg').forEach(el => {
+        el.setAttribute('r', 7 * pxPerUnit);
+        el.setAttribute('stroke-width', 1.5 * pxPerUnit);
+      });
+      document.querySelectorAll('.memo-badge-text').forEach(el => {
+        el.setAttribute('font-size', 9 * pxPerUnit);
+      });
     }
+    window.__updateNonScalingElements = updateNonScalingElements;
 
     // 画面上の dx, dy 分だけパン (右にドラッグ = 地図が右に移動 = viewBox が左に)
     function pan(dx, dy) {
@@ -1028,6 +1039,49 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     'その他':       '#888',
   };
 
+  // SVG上のメモバッジ（駅丸の右上に件数を表示）
+  function renderMemoBadgesSvg() {
+    const layer = document.getElementById('memo-badge-layer');
+    if (!layer) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    layer.innerHTML = '';
+    Object.entries(STATIONS).forEach(([sid, station]) => {
+      const mc = memoCount(sid);
+      if (mc === 0) return;
+      const lines = Array.from(stationLineMap[sid] || []);
+      if (lines.length === 0) return;
+      const cx = station.x + 8;
+      const cy = station.y - 8;
+      const r = 6;
+      const circle = document.createElementNS(NS, 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', '#F4A300');
+      circle.setAttribute('stroke', '#fff');
+      circle.setAttribute('stroke-width', 1.2);
+      circle.setAttribute('class', 'memo-badge-svg');
+      circle.setAttribute('data-station', sid);
+      circle.setAttribute('data-lines', lines.join(','));
+      layer.appendChild(circle);
+      const text = document.createElementNS(NS, 'text');
+      text.setAttribute('x', cx);
+      text.setAttribute('y', cy + 3);
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('fill', '#fff');
+      text.setAttribute('font-size', 8);
+      text.setAttribute('font-weight', 700);
+      text.setAttribute('class', 'memo-badge-text');
+      text.setAttribute('data-station', sid);
+      text.setAttribute('data-lines', lines.join(','));
+      text.setAttribute('pointer-events', 'none');
+      text.textContent = mc > 9 ? '9+' : mc;
+      layer.appendChild(text);
+    });
+    // ズーム比率で再スケーリング
+    if (window.__updateNonScalingElements) window.__updateNonScalingElements();
+  }
+
   // ===== メモバッジ即時反映 =====
   function rebuildMemoBadges() {
     // マップ駅丸
@@ -1048,6 +1102,8 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         }
       }
     });
+    // SVGメモバッジ再描画
+    renderMemoBadgesSvg();
     // リスト駅セル
     document.querySelectorAll('.list-station').forEach(li => {
       const sid = li.dataset.station;
@@ -1368,9 +1424,11 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
   }
 
   // ===== 全駅メモビュー =====
+  const MEMOS_SORT_KEY = 'route-map.memos-sort';
   const memosFilterState = {
     query: '',
-    genre: null,  // null=すべて
+    genre: null,
+    sort: localStorage.getItem(MEMOS_SORT_KEY) || 'added',
   };
 
   function flattenMemos() {
@@ -1417,6 +1475,19 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       ].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     });
+
+    // 並び替え
+    const sortKey = memosFilterState.sort;
+    const collator = new Intl.Collator('ja', { numeric: true, sensitivity: 'base' });
+    filtered.sort((a, b) => {
+      if (sortKey === 'name')    return collator.compare(a.name, b.name);
+      if (sortKey === 'station') return collator.compare(a.stationName, b.stationName);
+      if (sortKey === 'genre')   return collator.compare(a.genre || '', b.genre || '');
+      if (sortKey === 'added-asc') return 0; // flattenMemos順 = 追加順（古い）
+      // 'added' (新しい順)
+      return -1; // 配列を逆にしたいので簡易反転（下で reverse 適用）
+    });
+    if (sortKey === 'added') filtered.reverse();
 
     if (filtered.length === 0) {
       const empty = all.length === 0
@@ -1483,6 +1554,13 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       const g = btn.dataset.genre || null;
       memosFilterState.genre = g;
       buildMemosFilter();
+      buildMemosView();
+    });
+    const sortSelect = document.getElementById('memos-sort-select');
+    sortSelect.value = memosFilterState.sort;
+    sortSelect.addEventListener('change', (e) => {
+      memosFilterState.sort = e.target.value;
+      localStorage.setItem(MEMOS_SORT_KEY, memosFilterState.sort);
       buildMemosView();
     });
     // カードタップで該当駅のメモモーダル開く

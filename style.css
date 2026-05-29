@@ -676,6 +676,29 @@ body {
   gap: 5px;
 }
 
+.memos-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.memos-sort select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0' fill='none' stroke='%236e6e73' stroke-width='1.5'/></svg>") no-repeat right 8px center;
+  padding: 5px 24px 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 .memos-pill {
   appearance: none;
   border: 1px solid var(--border-strong);
