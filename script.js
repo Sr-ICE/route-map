@@ -1398,11 +1398,6 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         renderMemoModal();
       }
     });
-
-    modal.removeAttribute('hidden');
-    document.body.style.overflow = 'hidden';
-    // パン/ズームの pointer 状態が残らないようリセット
-    if (window.__resetPanZoom) window.__resetPanZoom();
   }
 
   function closeMemoModal() {
