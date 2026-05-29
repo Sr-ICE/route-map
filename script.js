@@ -992,7 +992,7 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     });
   }
 
-  // ===== ジャンル・タグ定義 =====
+  // ===== ジャンル・タグ・アイコン定義 =====
   const GENRE_TAGS = {
     'カフェ':       ['Wi-Fi', '電源', '禁煙', '喫煙OK', '24時間', '静か', 'おしゃれ', 'チェーン'],
     'レストラン':   ['個室', '予約必要', 'カード可', 'テイクアウト', 'ランチ', 'ディナー', '飲み放題'],
@@ -1005,6 +1005,28 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     'その他':       [],
   };
   const GENRE_LIST = Object.keys(GENRE_TAGS);
+  const GENRE_ICONS = {
+    'カフェ':       '☕',
+    'レストラン':   '🍴',
+    'バー/居酒屋':  '🍻',
+    '商業施設':     '🏬',
+    'レジャー':     '🎢',
+    '書店':         '📚',
+    'ホテル':       '🏨',
+    '雑貨':         '🛍️',
+    'その他':       '📍',
+  };
+  const GENRE_COLORS = {
+    'カフェ':       '#A0522D',
+    'レストラン':   '#DC143C',
+    'バー/居酒屋':  '#6A0DAD',
+    '商業施設':     '#1E90FF',
+    'レジャー':     '#2E8B57',
+    '書店':         '#FF8C00',
+    'ホテル':       '#5F6F81',
+    '雑貨':         '#E91E63',
+    'その他':       '#888',
+  };
 
   // ===== メモバッジ即時反映 =====
   function rebuildMemoBadges() {
@@ -1047,7 +1069,21 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
   }
 
   // ===== 駅メモモーダル =====
+  let currentMemoSid = null;
+  let memoEditingIndex = null;  // null=新規追加 / number=該当indexを編集中
+
   function openMemoModal(sid) {
+    currentMemoSid = sid;
+    memoEditingIndex = null;
+    renderMemoModal();
+    document.getElementById('memo-modal').removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+    if (window.__resetPanZoom) window.__resetPanZoom();
+  }
+
+  function renderMemoModal() {
+    const sid = currentMemoSid;
+    if (!sid) return;
     const station = STATIONS[sid];
     if (!station) return;
     const lines = Array.from(stationLineMap[sid] || [])
@@ -1057,7 +1093,6 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     const titleEl = document.getElementById('memo-modal-title');
     const subEl = document.getElementById('memo-modal-sub');
     const bodyEl = document.getElementById('memo-modal-body');
-    const modal = document.getElementById('memo-modal');
 
     titleEl.textContent = station.name;
     subEl.innerHTML = lines.map(l =>
@@ -1067,17 +1102,34 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     const memos = MEMOS[sid] || [];
     const memoListHtml = memos.length === 0
       ? '<p class="memo-modal__empty">まだメモはありません。下のフォームから追加してください。</p>'
-      : `<ul class="memo-list">${memos.map((m, i) => `
-          <li class="memo-item">
+      : `<ul class="memo-list">${memos.map((m, i) => {
+          const genre = m.genre || 'その他';
+          const icon = GENRE_ICONS[genre] || '📍';
+          const color = GENRE_COLORS[genre] || '#888';
+          const isEditing = memoEditingIndex === i;
+          return `
+          <li class="memo-item ${isEditing ? 'is-editing' : ''}" data-idx="${i}">
             <div class="memo-item__head">
-              <span class="memo-item__name">${escapeHtml(m.name)}</span>
-              ${m.genre ? `<span class="memo-item__genre">${escapeHtml(m.genre)}</span>` : ''}
+              <span class="memo-item__icon" style="background:${color}1A;color:${color}">${icon}</span>
+              <div class="memo-item__title">
+                <span class="memo-item__name">${escapeHtml(m.name)}</span>
+                ${m.genre ? `<span class="memo-item__genre" style="background:${color}1A;color:${color}">${escapeHtml(m.genre)}</span>` : ''}
+              </div>
+              <div class="memo-item__actions">
+                <button type="button" class="memo-item__btn" data-action="edit" data-idx="${i}" title="編集">✎</button>
+                <button type="button" class="memo-item__btn memo-item__btn--danger" data-action="delete" data-idx="${i}" title="削除">🗑</button>
+              </div>
             </div>
             ${(m.tags && m.tags.length) ? `<div class="memo-item__tags">${m.tags.map(t => `<span class="memo-item__tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
             ${m.memo ? `<p class="memo-item__memo">${escapeHtml(m.memo)}</p>` : ''}
             ${m.url ? `<a class="memo-item__url" href="${escapeAttr(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.url)} ↗</a>` : ''}
           </li>
-        `).join('')}</ul>`;
+        `;}).join('')}</ul>`;
+
+    const editing = memoEditingIndex !== null ? memos[memoEditingIndex] : null;
+    const submitLabel = editing
+      ? '更新'
+      : (getPat() ? '保存（GitHubに自動push）' : 'JSONをコピー（PAT未設定）');
 
     bodyEl.innerHTML = `
       <section class="memo-section">
@@ -1085,41 +1137,51 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         ${memoListHtml}
       </section>
       <section class="memo-section">
-        <h3 class="memo-section__title">追加</h3>
+        <h3 class="memo-section__title">${editing ? `「${escapeHtml(editing.name)}」を編集` : '追加'}</h3>
         <form class="memo-form" id="memo-form">
           <label class="memo-field">
             <span class="memo-field__label">店名 *</span>
-            <input type="text" name="name" id="memo-name" required placeholder="例: モンブラン">
+            <input type="text" name="name" id="memo-name" required placeholder="例: モンブラン" value="${escapeAttr(editing ? editing.name : '')}">
           </label>
           <div class="memo-field">
             <span class="memo-field__label">ジャンル</span>
             <div class="pill-group" id="genre-pills">
-              ${GENRE_LIST.map((g, i) => `
+              ${GENRE_LIST.map(g => `
                 <label class="pill-item">
-                  <input type="radio" name="genre" value="${g}" ${i === 0 ? '' : ''}>
-                  <span>${g}</span>
+                  <input type="radio" name="genre" value="${g}" ${editing && editing.genre === g ? 'checked' : ''}>
+                  <span>${(GENRE_ICONS[g] || '')} ${g}</span>
                 </label>
               `).join('')}
             </div>
           </div>
-          <div class="memo-field" id="tags-field" hidden>
+          <div class="memo-field" id="tags-field" ${editing && editing.genre && GENRE_TAGS[editing.genre] && GENRE_TAGS[editing.genre].length ? '' : 'hidden'}>
             <span class="memo-field__label">タグ（複数選択可）</span>
-            <div class="pill-group" id="tag-pills"></div>
+            <div class="pill-group" id="tag-pills">
+              ${editing && editing.genre && GENRE_TAGS[editing.genre] ? GENRE_TAGS[editing.genre].map(t => `
+                <label class="pill-item pill-item--check">
+                  <input type="checkbox" name="tag" value="${t}" ${editing.tags && editing.tags.includes(t) ? 'checked' : ''}>
+                  <span>${t}</span>
+                </label>
+              `).join('') : ''}
+            </div>
           </div>
           <label class="memo-field">
             <span class="memo-field__label">URL</span>
             <div class="memo-field__row">
-              <input type="url" name="url" id="memo-url" placeholder="https://...">
+              <input type="url" name="url" id="memo-url" placeholder="https://..." value="${escapeAttr(editing ? (editing.url || '') : '')}">
               <button type="button" class="memo-field__btn" id="search-url-btn" title="店名と駅名でGoogle検索">🔍</button>
             </div>
           </label>
           <label class="memo-field">
             <span class="memo-field__label">メモ</span>
-            <textarea name="memo" rows="3" placeholder="自由メモ"></textarea>
+            <textarea name="memo" rows="3" placeholder="自由メモ">${escapeHtml(editing ? (editing.memo || '') : '')}</textarea>
           </label>
-          <button type="submit" class="memo-form__submit">${getPat() ? '保存（GitHubに自動push）' : 'JSONをコピー（PAT未設定）'}</button>
+          <div class="memo-form__actions">
+            <button type="submit" class="memo-form__submit">${submitLabel}</button>
+            ${editing ? '<button type="button" class="memo-form__clear" id="cancel-edit">キャンセル</button>' : ''}
+          </div>
         </form>
-        ${getPat() ? '' : `
+        ${getPat() || editing ? '' : `
           <details class="memo-help">
             <summary>手動で memos.js に反映する手順</summary>
             <ol>
@@ -1133,6 +1195,58 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         `}
       </section>
     `;
+
+    // 編集/削除ボタンのハンドラ
+    bodyEl.querySelectorAll('.memo-item__btn').forEach(btn => {
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const action = btn.dataset.action;
+        if (action === 'edit') {
+          memoEditingIndex = idx;
+          renderMemoModal();
+          // フォーム位置までスクロール
+          setTimeout(() => {
+            const form = document.getElementById('memo-form');
+            if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 50);
+        } else if (action === 'delete') {
+          const target = memos[idx];
+          if (!target) return;
+          if (!confirm(`「${target.name}」を削除しますか？`)) return;
+          const newList = memos.filter((_, i) => i !== idx);
+          if (getPat()) {
+            try {
+              await saveMemoToGithub(sid, newList);
+              toast('削除しました');
+              rebuildMemoBadges();
+              renderMemoModal();
+            } catch (err) {
+              toast('削除失敗: ' + err.message);
+            }
+          } else {
+            // PAT未設定時はローカルのみ即時反映（永続化なし）+ コピー案内
+            MEMOS[sid] = newList;
+            const json = newList.length === 0
+              ? `  // "${sid}" を memos.js から削除してください`
+              : `  "${sid}": ${JSON.stringify(newList, null, 2).replace(/\n/g, '\n  ')},`;
+            navigator.clipboard.writeText(json).catch(() => {});
+            toast('一時削除しました。memos.js への反映はクリップボードの内容を参照');
+            rebuildMemoBadges();
+            renderMemoModal();
+          }
+        }
+      });
+    });
+
+    // キャンセル
+    const cancelBtn = document.getElementById('cancel-edit');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        memoEditingIndex = null;
+        renderMemoModal();
+      });
+    }
 
     // ジャンル切替でタグ pill 群を再生成
     const tagsField = document.getElementById('tags-field');
@@ -1176,33 +1290,43 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
         memo:  (fd.get('memo')  || '').trim(),
       };
       if (!memoObj.name) return;
-      // タグ空配列は省略
       if (memoObj.tags.length === 0) delete memoObj.tags;
-      const merged = [...memos, memoObj];
+
+      // 編集モード判定
+      const merged = memoEditingIndex !== null
+        ? memos.map((m, i) => i === memoEditingIndex ? memoObj : m)
+        : [...memos, memoObj];
+      const wasEditing = memoEditingIndex !== null;
 
       const submitBtn = e.target.querySelector('.memo-form__submit');
 
       if (getPat()) {
         const originalText = submitBtn.textContent;
         submitBtn.disabled = true;
-        submitBtn.textContent = '保存中...';
+        submitBtn.textContent = wasEditing ? '更新中...' : '保存中...';
         try {
           await saveMemoToGithub(sid, merged);
-          toast('保存完了（Pagesに1〜2分で反映）');
+          toast(wasEditing ? '更新完了' : '保存完了（Pagesに1〜2分で反映）');
+          memoEditingIndex = null;
           rebuildMemoBadges();
-          openMemoModal(sid);  // 再描画
+          renderMemoModal();
         } catch (err) {
-          toast('保存失敗: ' + err.message);
+          toast((wasEditing ? '更新' : '保存') + '失敗: ' + err.message);
           submitBtn.disabled = false;
           submitBtn.textContent = originalText;
         }
       } else {
+        // PAT未設定時はローカルのみ即時反映 + クリップボード
+        MEMOS[sid] = merged;
+        memoEditingIndex = null;
         const json = `  "${sid}": ${JSON.stringify(merged, null, 2).replace(/\n/g, '\n  ')},`;
         navigator.clipboard.writeText(json).then(() => {
-          toast('JSONをコピー。memos.js に貼り付けてください');
+          toast(wasEditing ? '一時更新しました。memos.jsへの反映はクリップボードを' : 'JSONをコピー。memos.js に貼り付けてください');
         }).catch(() => {
           prompt('下記をコピーしてください:', json);
         });
+        rebuildMemoBadges();
+        renderMemoModal();
       }
     });
 

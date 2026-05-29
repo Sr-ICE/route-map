@@ -787,11 +787,95 @@ body {
   border-radius: var(--radius-md);
 }
 
+.memo-item.is-editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+
 .memo-item__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 4px;
+}
+
+.memo-item__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.memo-item__title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.memo-item__title .memo-item__name {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memo-item__title .memo-item__genre {
+  display: inline-block;
+  width: max-content;
+}
+
+.memo-item__actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.memo-item__btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.memo-item__btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.memo-item__btn--danger:hover {
+  background: #FDEAEA;
+  color: #C00;
+  border-color: rgba(204,0,0,0.3);
+}
+
+.memo-item__btn:active { transform: scale(0.94); }
+
+.memo-form__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.memo-form__actions .memo-form__submit {
+  flex: 1;
+  margin-top: 0;
 }
 
 .memo-item__name {
