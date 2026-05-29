@@ -264,18 +264,24 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
           const decoded = new TextDecoder().decode(
             Uint8Array.from(atob(rawContent), c => c.charCodeAt(0))
           );
-          const m = decoded.match(/const\s+STATION_MEMOS\s*=\s*({[\s\S]*?})\s*;?\s*$/m);
+          // greedyマッチで { ... } 全体を取る（非貪欲だとネストで途中切れる）
+          // 「const STATION_MEMOS = ... ;」の最後の `;` までを取得
+          const m = decoded.match(/const\s+STATION_MEMOS\s*=\s*([\s\S]*);\s*$/);
           if (m) {
-            // コメント/トレーリングカンマを掃除して JSON.parse
             const cleaned = m[1]
               .replace(/\/\/.*$/gm, '')
               .replace(/\/\*[\s\S]*?\*\//g, '')
-              .replace(/,(\s*[}\]])/g, '$1');
+              .replace(/,(\s*[}\]])/g, '$1')
+              .trim();
             try {
-              remoteMemos = JSON.parse(cleaned);
-            } catch {
-              // JSONとして読めない場合は無理せずローカルベース
-              remoteMemos = { ...MEMOS };
+              const parsed = JSON.parse(cleaned);
+              if (parsed && typeof parsed === 'object') {
+                remoteMemos = parsed;
+              }
+            } catch (e) {
+              console.warn('memos.js JSON parse failed:', e, 'content:', cleaned.slice(0, 200));
+              // パース失敗時はリモート上書き防止のためエラーにする
+              throw new Error('リモートmemos.jsのパース失敗。手動マージが必要');
             }
           }
         } catch (e) {
@@ -1103,7 +1109,14 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
       }
     });
     // SVGメモバッジ再描画
-    renderMemoBadgesSvg();
+    try { renderMemoBadgesSvg(); } catch (e) { console.warn('badge render', e); }
+    // メモタブが開いていれば一覧も更新
+    try {
+      const mv = document.getElementById('view-memos');
+      if (mv && mv.classList.contains('is-active') && typeof buildMemosView === 'function') {
+        buildMemosView();
+      }
+    } catch (e) { console.warn('memos view rebuild', e); }
     // リスト駅セル
     document.querySelectorAll('.list-station').forEach(li => {
       const sid = li.dataset.station;
@@ -1596,14 +1609,6 @@ const STATION_MEMOS = ${JSON.stringify(data, null, 2)};
     });
   }
 
-  // メモ保存/削除時にメモビューも更新するよう rebuildMemoBadges を拡張
-  const _origRebuild = rebuildMemoBadges;
-  rebuildMemoBadges = function() {
-    _origRebuild();
-    if (document.getElementById('view-memos').classList.contains('is-active')) {
-      buildMemosView();
-    }
-  };
 
   // ===== 初期化 =====
   document.addEventListener('DOMContentLoaded', () => {
