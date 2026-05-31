@@ -34,5 +34,13 @@ const STATION_MEMOS = {
       "url": "https://spontini.jp/harajuku.html",
       "memo": "でけぇピッツァ🍕"
     }
+  ],
+  "jiyugaoka": [
+    {
+      "name": "MIKIYA'S",
+      "genre": "レストラン",
+      "url": "",
+      "memo": "フェットチーネに変更すべき。"
+    }
   ]
 };
