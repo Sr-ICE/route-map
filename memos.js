@@ -40,7 +40,7 @@ const STATION_MEMOS = {
       "name": "MIKIYA'S",
       "genre": "レストラン",
       "url": "",
-      "memo": "フェットチーネに変更すべき。"
+      "memo": "フェットチーネに変更すべき。\n予算5000円くらい。"
     }
   ]
 };
